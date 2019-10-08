@@ -9,3 +9,87 @@
    b) the program should be environment($PATH variable)-sensitive: for ex.,'/bin/ls' should be executed with string 'ls'. 
 3. Collect exit codes via waitpid/WEXITSTATUS.
 4. Note that a size of command can reach a lot of kbytes: type "getconf ARG_MAX" cmd to check it.
+
+
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/wait.h>
+#include <string.h>
+
+
+const int MAX_SIZE = 2097152;
+int tokens;
+
+void clearMemory(char **args) {
+    for (int i = 0; i < tokens; i++)
+        free(args[i]);
+    free(args);
+}
+
+int readLine(char *input) {
+    if (fgets(input, MAX_SIZE, stdin) == NULL || strlen(input) == MAX_SIZE - 1)
+        return -1;
+    else
+        input[strlen(input) - 1] = '\0';
+    return 0;
+}
+
+char **parseCommand(char **args, char *command) {
+    int args_size = 5;
+    args = (char **) malloc(sizeof(char *) * args_size);
+    int index = 0;
+    char delim[] = " ";
+    for (char *p = strtok(command, delim); p != NULL; p = strtok(NULL, delim)) {
+        args[index] = malloc(sizeof(char) * (strlen(p) + 1));
+        strcpy(args[index], p);
+        index++;
+        if (index == args_size - 1) {
+            args_size = args_size * 2;
+            args = (char **) realloc(args, sizeof(char *) * args_size);
+        }
+    }
+    tokens = index;
+    return args;
+}
+
+void execute(char *command) {
+    char **args = parseCommand(args, command);
+    const pid_t pid = fork();
+    int status;
+    if (pid < 0) {
+        printf("\nError: Could not fork\n\n");
+        return;
+    }
+
+    if (pid) {
+        waitpid(pid, &status, 0);
+        if (!status)
+            printf("\n--- Finished successfully ---\n\n");
+        printf("Exit code: %d\n", WEXITSTATUS(status));
+        clearMemory(args);
+        return;
+    }
+
+    execvp(args[0], args);
+    printf("\nError: Invalid command\n\n");
+    exit(1);
+}
+
+int main() {
+    char input[MAX_SIZE];
+    const char exitCode[5] = "quit";
+    int run = 1;
+    while (run) {
+        if (readLine(input) == 0) {
+            if (!strcmp(input, exitCode))
+                run = 0;
+            else
+                execute(input);
+        } else {
+            printf("\nError: Invalid string\n\n");
+            run = 0;
+        }
+    }
+    return 0;
+}
