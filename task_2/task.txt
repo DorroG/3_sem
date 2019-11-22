@@ -10,3 +10,69 @@ typedef struct {
 4) When one process is terminated, the other should also exit.
 
 */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#define BUFFER_SIZE 2048
+
+typedef struct {
+    int txd[2];
+    int rxd[2];
+} dpipe_t;
+
+int main() {
+    int size;
+    char buffer[BUFFER_SIZE];
+    dpipe_t dpipe;
+    if ((pipe(dpipe.rxd) < 0) | (pipe(dpipe.txd) < 0)) {
+        printf("Error: cannot create pipe");
+        exit(-1);
+    }
+    pid_t pid = getpid();
+    pid_t fork_pid = fork();
+    if (fork_pid < 0) {
+        printf("Error: cannot fork");
+        exit(-1);
+    }
+    if (fork_pid == 0) {
+        // Child
+        close(dpipe.txd[1]);
+        close(dpipe.rxd[0]);
+        // Reading from pipe, display message and write to parent
+        while ((size = read(dpipe.txd[0], buffer, sizeof(buffer) - 1)) > 0) {
+            // Check if parent is available
+            if (getppid() != pid)
+                break;
+            buffer[size] = '\0';
+            printf("--Child--- received message from parent: %s", buffer);
+            write(dpipe.rxd[1], buffer, size);
+            printf("--Child--- sending message to parent: %s", buffer);
+        }
+        printf("--Child--- parent is not available\n--Child--  exit\n");
+    } else {
+        // Parent
+        close(dpipe.txd[0]);
+        close(dpipe.rxd[1]);
+        // Reading from standard input, write to child and then read from child
+        while ((size = read(0, buffer, sizeof(buffer) - 1)) > 0) {
+            if (waitpid(fork_pid, NULL, WNOHANG) != 0) {
+                printf("--Parent-- child is not available\n--Parent-- exit\n");
+                exit(0);
+            }
+            buffer[size] = '\0';
+            write(dpipe.txd[1], buffer, size);
+            printf("--Parent-- sending message to child: %s", buffer);
+            // Wait for incoming message
+            sleep(1);
+            size = read(dpipe.rxd[0], buffer, sizeof(buffer) - 1);
+            buffer[size] = '\0';
+            printf("--Parent-- received message from child: %s", buffer);
+        }
+    }
+    return 0;
+}
+
