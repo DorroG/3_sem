@@ -90,7 +90,7 @@ void receive_data(sigset_t *set) {
 }
 
 int main() {
-    char filename[] = "task5.c";
+    char filename[] = "task.c";
     // Parent pid
     pid_t ppid = getpid();
 
